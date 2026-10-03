@@ -1,9 +1,3 @@
-# Percobaan 4A – MQTT Subscribe & Deserialisasi JSON (ESP8266)
-
-**Praktikan:** Kaira Meilasya Nayada (H1H024020)
-**Mata Kuliah:** TK245005 – Program Studi Teknik Komputer UNSOED
-**Modul:** 4
-
 ## 1. Detail Percobaan
 
 Percobaan pertama (4A) bertujuan untuk memahami cara kerja mekanisme **subscribe** pada protokol **MQTT** dan proses **deserialisasi data JSON** yang diterima oleh ESP8266 untuk digunakan sebagai perintah kendali aktuator (LED). ESP8266 terhubung ke WiFi dan broker MQTT `broker.hivemq.com`, kemudian melakukan subscribe pada topic `unsoed/tk245004/kelompok2/perintah`. Setiap pesan JSON berisi `{"perintah":"ON"}` atau `{"perintah":"OFF"}` yang diterima akan di-parsing, lalu LED dinyalakan atau dimatikan sesuai isi perintah.
@@ -41,8 +35,6 @@ const int   ledPin        = D5;   // pin LED (sesuai rangkaian)
 ```
 
 Bagian ini mendefinisikan kredensial WiFi, alamat dan port broker MQTT, topic yang di-subscribe untuk menerima perintah, serta pin LED. Objek `WiFiClient espClient` dan `PubSubClient client(espClient)` dibuat sebagai dasar koneksi jaringan dan MQTT.
-
-> **Catatan:** pada kode di logbook tertulis `const int ledPin = 26;`, padahal rangkaian memakai pin **D5**. ESP8266 tidak memiliki GPIO26, sehingga sebaiknya diganti menjadi `D5`.
 
 ### 3.2 Fungsi `callback()`
 
