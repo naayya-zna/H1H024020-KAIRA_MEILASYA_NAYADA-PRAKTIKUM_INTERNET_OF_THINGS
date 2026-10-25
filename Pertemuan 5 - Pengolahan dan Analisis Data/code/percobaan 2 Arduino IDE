@@ -1,0 +1,113 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <math.h>
+
+// Konfigurasi Wi-Fi
+const char* ssid = "dips!";
+const char* password = "12345678";
+
+// Konfigurasi MQTT
+const char* mqttServer = "broker.hivemq.com";
+const int mqttPort = 1883;
+const char* topicData = "unsoed/tk245004/kelompok2/data";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+unsigned long jumlahBaca = 0;
+
+// Simulasi suhu pengganti DHT22
+float bacaSuhuMock() {
+  jumlahBaca++;
+
+  float suhuDasar = 28.0 + 2.0 * sin(jumlahBaca * 0.08);
+  float noise = random(-5, 6) * 0.1;
+  float suhu = suhuDasar + noise;
+
+  if (jumlahBaca % 25 == 0) {
+    suhu += 8.0;
+  }
+
+  return suhu;
+}
+
+// Hubungkan ke Wi-Fi
+void setupWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  Serial.print("Menghubungkan Wi-Fi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWi-Fi berhasil terhubung!");
+  Serial.print("Alamat IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+// Hubungkan kembali ke MQTT jika terputus
+void reconnectMQTT() {
+  while (!client.connected()) {
+    String clientId = "ESP8266-Mock-";
+    clientId += String(ESP.getChipId(), HEX);
+
+    Serial.println("Mencoba koneksi MQTT...");
+
+    if (client.connect(clientId.c_str())) {
+      Serial.println("MQTT berhasil terhubung!");
+    } else {
+      Serial.print("MQTT gagal, kode: ");
+      Serial.println(client.state());
+      delay(5000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  randomSeed(micros());
+
+  setupWiFi();
+  client.setServer(mqttServer, mqttPort);
+
+  reconnectMQTT();
+}
+
+void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
+    setupWiFi();
+  }
+
+  if (!client.connected()) {
+    reconnectMQTT();
+  }
+
+  client.loop();
+
+  float suhu = bacaSuhuMock();
+
+  StaticJsonDocument<128> doc;
+  doc["suhu"] = suhu;
+
+  char payload[128];
+  serializeJson(doc, payload);
+
+  bool berhasil = client.publish(topicData, payload);
+
+  Serial.print("Pembacaan ke-");
+  Serial.print(jumlahBaca);
+  Serial.print(" | Suhu mock: ");
+  Serial.print(suhu, 2);
+  Serial.print(" °C | Topic: ");
+  Serial.print(topicData);
+  Serial.print(" | Publish: ");
+  Serial.println(berhasil ? "Berhasil" : "Gagal");
+
+  delay(5000);
+}
