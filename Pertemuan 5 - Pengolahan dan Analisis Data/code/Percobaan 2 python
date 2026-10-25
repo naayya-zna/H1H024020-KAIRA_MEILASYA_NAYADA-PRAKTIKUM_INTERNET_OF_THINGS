@@ -1,0 +1,139 @@
+import json
+import time
+import paho.mqtt.client as mqtt
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Konfigurasi MQTT (harus sama dengan ESP8266)
+BROKER = "broker.hivemq.com"
+PORT = 1883
+TOPIC = "unsoed/tk245004/kelompok2/data"
+JUMLAH_SAMPEL = 30
+
+data = []
+
+
+# Dipanggil saat Python terhubung ke broker MQTT
+def on_connect(client, userdata, flags, reason_code, properties):
+    print("Terhubung ke broker, kode:", reason_code)
+
+    if reason_code == 0:
+        client.subscribe(TOPIC)
+        print("Subscribe topic:", TOPIC)
+        print("Menunggu data suhu dari ESP8266...")
+
+
+# Dipanggil setiap kali pesan MQTT diterima
+def on_message(client, userdata, msg):
+    try:
+        payload = json.loads(msg.payload.decode("utf-8"))
+        suhu = float(payload["suhu"])
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        print("Data tidak valid, diabaikan.")
+        return
+
+    waktu = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    data.append({
+        "waktu": waktu,
+        "suhu": suhu
+    })
+
+    print(
+        f"[{len(data)}/{JUMLAH_SAMPEL}] "
+        f"Waktu: {waktu} | Suhu: {suhu:.2f} °C"
+    )
+
+    # Berhenti setelah jumlah sampel terpenuhi
+    if len(data) >= JUMLAH_SAMPEL:
+        client.disconnect()
+
+
+# Tahap 1: Akuisisi data melalui MQTT
+client = mqtt.Client(
+    callback_api_version=mqtt.CallbackAPIVersion.VERSION2
+)
+client.on_connect = on_connect
+client.on_message = on_message
+
+print("Menghubungkan ke broker MQTT...")
+
+try:
+    client.connect(BROKER, PORT, keepalive=60)
+    client.loop_forever()
+
+except KeyboardInterrupt:
+    print("\nPengambilan data dihentikan oleh pengguna.")
+
+except Exception as error:
+    print("Terjadi kesalahan koneksi MQTT:", error)
+
+# Tahap 2: Simpan data ke CSV
+if len(data) == 0:
+    print("Tidak ada data yang diterima.")
+    print("Periksa koneksi ESP8266, broker, dan topic MQTT.")
+
+else:
+    df = pd.DataFrame(data)
+
+    # Analisis statistik dan deteksi anomali
+    rata2 = df["suhu"].mean()
+    std = df["suhu"].std()
+
+    if pd.isna(std) or std == 0:
+        df["zscore"] = 0.0
+    else:
+        df["zscore"] = (df["suhu"] - rata2) / std
+
+    df["anomali"] = df["zscore"].abs() > 2
+
+    # Simpan waktu, suhu, z-score, dan status anomali
+    df.to_csv("data_suhu.csv", index=False)
+
+    print("\n===== HASIL ANALISIS DATA =====")
+    print(f"Jumlah data     : {len(df)}")
+    print(f"Rata-rata       : {rata2:.2f} °C")
+    print(f"Standar deviasi : {std:.2f}")
+    print(f"Minimum         : {df['suhu'].min():.2f} °C")
+    print(f"Maksimum        : {df['suhu'].max():.2f} °C")
+    print(f"Jumlah anomali  : {int(df['anomali'].sum())}")
+    print("Data tersimpan di data_suhu.csv")
+
+    # Tahap 4: Visualisasi data
+    plt.figure(figsize=(10, 4))
+
+    plt.plot(
+        df.index + 1,
+        df["suhu"],
+        marker="o",
+        label="Suhu"
+    )
+
+    anom = df[df["anomali"]]
+
+    plt.scatter(
+        anom.index + 1,
+        anom["suhu"],
+        color="red",
+        s=100,
+        label="Anomali",
+        zorder=3
+    )
+
+    plt.axhline(
+        rata2,
+        color="gray",
+        linestyle="--",
+        label="Rata-rata"
+    )
+
+    plt.xlabel("Urutan data")
+    plt.ylabel("Suhu (°C)")
+    plt.title("Data Suhu dan Deteksi Anomali")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("grafik_suhu.png")
+
+    print("Grafik tersimpan di grafik_suhu.png")
+
+    plt.show()
